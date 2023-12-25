@@ -1,0 +1,8 @@
+# PostgreSQL DSN
+PG_DSN= "postgres://postgres:toor@localhost:5433/crudiator"
+
+# SQlite DSN 
+SQLITE_DSN= ""
+
+# MySQL DSN 
+MSQL_DSN= ""
