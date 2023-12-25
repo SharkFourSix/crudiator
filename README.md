@@ -33,6 +33,8 @@ var (
 studentCrudiator.Create(form, db)
 ```
 
+**_Refer to tests for additional use cases_**
+
 #### Pagination
 
 Pagination is supported when reading data.
@@ -71,11 +73,12 @@ Each of these is invoked before and after each function of the CRUD is called.
 
 #### Database support
 
-| Database   | Create | Read | Update | Delete |
-| ---------- | ------ | ---- | ------ | ------ |
-| PostgreSQL | YES    |
+| Database   | Create | Read | Update | Delete | TESTED |
+| ---------- | ------ | ---- | ------ | ------ | ------ |
+| PostgreSQL | YES    | YES  | YES    | YES    | YES    |
+| MYSQL      | YES    | YES  | YES    | YES    | NO     |
+| SQLITE     | YES    | YES  | YES    | YES    | NO     |
 
-### TODO
+#### Validation
 
-- [ ] Add `*Context` methods (i.e `CreateWithContext` to call `sql.DB.ExecContext()`)
-- [ ] Migrate tests to testcontainers
+crudiator does not provide data validation. Validation is not appropriate at this layer. It should be trivial to use data validators at a higher layer before passing data to crudiator.

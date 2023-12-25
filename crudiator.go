@@ -466,6 +466,11 @@ func (e *Editor) Build() Crudiator {
 		builder.WriteRune(')')
 	}
 
+	if e.dialect == POSTGRESQL {
+		builder.WriteString(" RETURNING ")
+		builder.WriteString(strings.Join(e.readFields, ","))
+	}
+
 	e.deleteStatement = builder.String()
 
 	e.logger.Debug("create statement => %s", e.createStatement)
@@ -655,11 +660,54 @@ func (e Editor) Update(form DataForm, db *sql.DB) (DbRow, error) {
 
 func (e Editor) Delete(form DataForm, db *sql.DB) (DbRow, error) {
 	var results DbRow
+	var fieldValues []any
+
 	e.invokePreActionCallback(e.preDelete, form)
+
+	if e.softDelete {
+		fieldValues = e.getFieldValues(e.softDeleteColumns, form)
+	}
+
+	fieldValues = append(fieldValues, e.getFieldvalue(e.primaryKeyField, form))
+	if len(e.filterFields) > 0 {
+		fieldValues = append(fieldValues, e.getFieldValues(e.filterFields, form)...)
+	}
+
 	switch e.dialect {
 	case SQLITE:
+		fallthrough
 	case MYSQL:
+		if e.softDelete {
+			_, err := db.Exec(e.deleteStatement, fieldValues...)
+			if err != nil {
+				return nil, err
+			}
+			result, err := e.SingleRead(form, db)
+			if err != nil {
+				return nil, err
+			}
+			results = result
+		} else {
+			_, err := db.Exec(e.deleteStatement, fieldValues...)
+			if err != nil {
+				return nil, err
+			}
+			// copy field values over since we cannot get the values back after deletion
+			results = make(DbRow)
+			for _, f := range e.readFields {
+				f = e.unquote(f)
+				results[f] = form.Get(f)
+			}
+		}
 	case POSTGRESQL:
+		rows, err := db.Query(e.deleteStatement, fieldValues...)
+		if err != nil {
+			return nil, err
+		}
+		results, err = e.scanRow(rows)
+		if err != nil {
+			return nil, err
+		}
 	}
 	e.invokePostActionCallback(e.postDelete, []DbRow{results})
 	return results, nil

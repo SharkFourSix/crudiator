@@ -60,7 +60,7 @@ var (
 		crudiator.NewField("created_at", crudiator.IncludeOnCreate, crudiator.IncludeOnRead),
 		crudiator.NewField("updated_at", crudiator.IncludeOnUpdate, crudiator.IncludeOnRead),
 		crudiator.NewField("school_id", crudiator.IncludeOnCreate, crudiator.IncludeOnRead, crudiator.IsSelectionFilter),
-	).SoftDelete(false, "deleted_at").
+	).SoftDelete(true, "deleted_at").
 		SetLogger(crudiator.NewStdOutLogger(crudiator.Debug)).
 		MustPaginate(crudiator.KEYSET, "id").
 		Build()
@@ -71,7 +71,7 @@ var (
 		crudiator.NewField("id", crudiator.IsPrimaryKey, crudiator.IncludeOnRead),
 		crudiator.NewField("school_name", crudiator.IncludeAlways),
 		crudiator.NewField("deleted_at", crudiator.IncludeAlways),
-	).SoftDelete(true, "deleted_at").
+	).
 		SetLogger(crudiator.NewStdOutLogger(crudiator.Debug)).
 		MustPaginate(crudiator.KEYSET, "id").
 		Build()
@@ -223,5 +223,5 @@ func TestPostgresqlDelete(t *testing.T) {
 	form.Set("id", row["id"])
 	deletedRow, err := schoolCrudiator.Delete(form, db)
 	checkError(err, t)
-	assert.NotNil(t, deletedRow, "Soft deletion")
+	assert.NotNil(t, deletedRow, "hard deletion")
 }
