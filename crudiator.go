@@ -668,7 +668,6 @@ func (e Editor) Delete(form DataForm, db *sql.DB) (DbRow, error) {
 type Field struct {
 	PrimaryKey bool
 	Name       string
-	Alias      string
 	Create     bool
 	Read       bool
 	Update     bool
