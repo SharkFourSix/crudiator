@@ -1,13 +1,14 @@
 package crudiator_test
 
 import (
-	"SharkFourSix/crudiator"
 	"context"
 	"database/sql"
 	"io"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/SharkFourSix/crudiator"
 
 	"github.com/BurntSushi/toml"
 	"github.com/stretchr/testify/assert"
