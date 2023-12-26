@@ -1,9 +1,10 @@
 package gofiber
 
 import (
-	"SharkFourSix/crudiator"
 	"encoding/json"
 	"strings"
+
+	"github.com/SharkFourSix/crudiator"
 
 	"github.com/gofiber/fiber/v2"
 )

@@ -1,4 +1,4 @@
-module SharkFourSix/crudiator
+module github.com/SharkFourSix/crudiator
 
 go 1.21.4
 

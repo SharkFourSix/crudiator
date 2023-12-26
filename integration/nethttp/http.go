@@ -4,10 +4,11 @@
 package nethttp
 
 import (
-	"SharkFourSix/crudiator"
 	"encoding/json"
 	"io"
 	"net/http"
+
+	"github.com/SharkFourSix/crudiator"
 )
 
 // Reads from the request's query parameters and form fields

@@ -1,8 +1,9 @@
 package crudiator_test
 
 import (
-	"SharkFourSix/crudiator"
 	"testing"
+
+	"github.com/SharkFourSix/crudiator"
 )
 
 func TestPostgresPlaceholders(t *testing.T) {
