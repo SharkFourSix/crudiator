@@ -68,6 +68,7 @@ type Editor struct {
 	readFields               []string
 	updateFields             []string
 	filterFields             []string
+	filterFieldCount         int // actual parameterized fields
 	primaryKeyField          string
 	logger                   Logger
 	dbg                      bool
@@ -211,12 +212,22 @@ func (e *Editor) MustPaginate(strategy PaginationStrategy, fields ...string) *Ed
 }
 
 func (e *Editor) buildFilterFields() *Editor {
+	count := 0
 	e.filterFields = make([]string, 0)
 	for _, f := range e.fields {
 		if f.SelectionFilter {
-			e.filterFields = append(e.filterFields, fmt.Sprintf("%c%s%c", e.quoteRune, f.Name, e.quoteRune))
+			fieldSpec := fmt.Sprintf("%c%s%c", e.quoteRune, f.Name, e.quoteRune)
+			if f.NullCheck == FieldMustBeNull {
+				fieldSpec += " IS NULL"
+			} else if f.NullCheck == FieldMustNotBeNull {
+				fieldSpec += " IS NOT NULL"
+			} else {
+				count++
+			}
+			e.filterFields = append(e.filterFields, fieldSpec)
 		}
 	}
+	e.filterFieldCount = count
 	return e
 }
 
@@ -322,7 +333,7 @@ func (e *Editor) Build() Crudiator {
 
 	if len(e.filterFields) > 0 {
 		builder.WriteString(" AND (")
-		builder.WriteString(ParameterizeFields(e.filterFields, e.dialect, parameterCount+1))
+		builder.WriteString(ParameterizeFields(e.filterFields, e.dialect, true, parameterCount+1))
 		builder.WriteRune(')')
 	}
 
@@ -340,11 +351,12 @@ func (e *Editor) Build() Crudiator {
 		hasFilters = true
 		builder.WriteString(" WHERE ")
 		builder.WriteRune('(')
-		builder.WriteString(ParameterizeFields(e.filterFields, e.dialect))
+		builder.WriteString(ParameterizeFields(e.filterFields, e.dialect, true))
 		builder.WriteRune(')')
 
 		if e.dialect == POSTGRESQL {
-			parameterCount = len(e.filterFields)
+			//parameterCount = len(e.filterFields)
+			parameterCount = e.filterFieldCount
 		}
 	}
 
@@ -397,7 +409,7 @@ func (e *Editor) Build() Crudiator {
 	builder.WriteString("UPDATE ")
 	builder.WriteString(e.tableNameQuoted)
 	builder.WriteString(" SET ")
-	builder.WriteString(ParameterizeFields(e.updateFields, e.dialect))
+	builder.WriteString(ParameterizeFields(e.updateFields, e.dialect, false))
 	builder.WriteString(" WHERE ")
 	builder.WriteRune(e.quoteRune)
 	builder.WriteString(e.primaryKeyField)
@@ -416,7 +428,7 @@ func (e *Editor) Build() Crudiator {
 	if len(e.filterFields) > 0 {
 		builder.WriteString(" AND ")
 		builder.WriteRune('(')
-		builder.WriteString(ParameterizeFields(e.filterFields, e.dialect, parameterCount))
+		builder.WriteString(ParameterizeFields(e.filterFields, e.dialect, true, parameterCount))
 		builder.WriteRune(')')
 	}
 
@@ -435,7 +447,7 @@ func (e *Editor) Build() Crudiator {
 		builder.WriteString("UPDATE ")
 		builder.WriteString(e.tableNameQuoted)
 		builder.WriteString(" SET ")
-		builder.WriteString(ParameterizeFields(e.softDeleteColumns, e.dialect))
+		builder.WriteString(ParameterizeFields(e.softDeleteColumns, e.dialect, false))
 	} else {
 		builder.WriteString("DELETE FROM ")
 		builder.WriteString(e.tableNameQuoted)
@@ -462,7 +474,7 @@ func (e *Editor) Build() Crudiator {
 	if len(e.filterFields) > 0 {
 		builder.WriteString(" AND ")
 		builder.WriteRune('(')
-		builder.WriteString(ParameterizeFields(e.filterFields, e.dialect, parameterCount+1))
+		builder.WriteString(ParameterizeFields(e.filterFields, e.dialect, true, parameterCount+1))
 		builder.WriteRune(')')
 	}
 
@@ -482,15 +494,21 @@ func (e *Editor) Build() Crudiator {
 	return e
 }
 
+func (e Editor) fieldHasNullConstraint(field string) bool {
+	return strings.HasSuffix(field, "IS NULL") || strings.HasSuffix(field, "IS NOT NULL")
+}
+
 // Returns values in order of field occurrence
 func (e Editor) getFieldValues(fields []string, form DataForm) []any {
-	var data []any = make([]any, len(fields))
-	for i, f := range fields {
-		isquoted := f[0] == byte(e.quoteRune) && f[len(f)-1] == byte(e.quoteRune)
-		if isquoted {
-			f = strings.Trim(f, string(e.quoteRune))
+	var data []any = make([]any, 0)
+	for _, f := range fields {
+		if !e.fieldHasNullConstraint(f) {
+			isquoted := f[0] == byte(e.quoteRune) && f[len(f)-1] == byte(e.quoteRune)
+			if isquoted {
+				f = strings.Trim(f, string(e.quoteRune))
+			}
+			data = append(data, form.Get(f))
 		}
-		data[i] = form.Get(f)
 	}
 	return data
 }
@@ -512,11 +530,17 @@ func (e Editor) scanRows(rows *sql.Rows) ([]DbRow, error) {
 }
 
 func (e Editor) scanRow(rows *sql.Rows) (DbRow, error) {
+	var row DbRow
 	scanned, err := e.scanRows(rows)
 	if err != nil {
 		return nil, err
 	}
-	return scanned[0], nil
+	if len(scanned) > 0 {
+		row = scanned[0]
+	} else {
+		row = DbRow{}
+	}
+	return row, nil
 }
 
 func (e Editor) unquote(name string) string {
@@ -731,7 +755,31 @@ type Field struct {
 	//	)
 	//	editor.Read() // SELECT "name", school_id FROM students WHERE school_id = $1
 	SelectionFilter bool
+	NullCheck       FieldNullCheck
 }
+
+// Indicates whether a field should be checked againt the 'NULL' constant value.
+//
+// For most DBMS, the following query will yield nothing:
+//
+//	SELECT * FROM foo WHERE col1 = NULL
+//
+// Rather, the following returns data:
+//
+//	SELECT * FROM foo WHERE col1 IS NULL
+//
+// This type's values control this behavior. This is especially useful for filter fields
+type FieldNullCheck int
+
+const (
+	// Indicates that the field should always be checked normally '= ?' or '= $1'.
+	// This is the default behavior
+	NoFieldNullCheck FieldNullCheck = iota
+	// Indicates that the field should always be checked as 'IS NULL'
+	FieldMustBeNull
+	// Indicates that the field should always be checked as 'IS NOT NULL'
+	FieldMustNotBeNull
+)
 
 type FieldOption func(f *Field)
 
@@ -747,11 +795,9 @@ var (
 	IncludeOnRead     FieldOption = func(f *Field) { f.Read = true }
 	IsUnique          FieldOption = func(f *Field) { f.Unique = true }
 	IsSelectionFilter FieldOption = func(f *Field) { f.SelectionFilter = true }
+	IsNullConstant    FieldOption = func(f *Field) { f.NullCheck = FieldMustBeNull }
+	IsNotNullConstant FieldOption = func(f *Field) { f.NullCheck = FieldMustNotBeNull }
 )
-
-func (f *Field) SetValue() *Field {
-	return f
-}
 
 func NewField(name string, options ...FieldOption) Field {
 	f := Field{Name: name}
