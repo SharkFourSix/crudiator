@@ -11,6 +11,7 @@ type DataForm interface {
 	Get(name string) any
 	Set(name string, value any)
 	Remove(name string)
+	Iterate(func(key string, value any))
 }
 
 func mustBeAStructPointer(ptr any) {
@@ -24,15 +25,16 @@ func mustBeAStructPointer(ptr any) {
 }
 
 // convert struct to DataForm
-func FromJsonStruct(structptr any) DataForm {
-	return FromStruct(structptr, "json")
+func FromJsonStruct(structptr any, additional ...DataForm) DataForm {
+	return FromStruct(structptr, "json", additional...)
 }
 
-func FromXmlStruct(structptr any) DataForm {
-	return FromStruct(structptr, "xml")
+func FromXmlStruct(structptr any, additional ...DataForm) DataForm {
+	return FromStruct(structptr, "xml", additional...)
 }
 
-func FromStruct(structptr any, tag string) DataForm {
+// Create form from a struct. Pass an additional form to append/overwrite values
+func FromStruct(structptr any, tag string, additional ...DataForm) DataForm {
 	mustBeAStructPointer(structptr)
 	var form MapBackedDataForm = make(map[string]any)
 
@@ -56,6 +58,13 @@ func FromStruct(structptr any, tag string) DataForm {
 		}
 	}
 
+	if len(additional) > 0 {
+		df := additional[0]
+		df.Iterate(func(key string, value any) {
+			form[key] = value
+		})
+	}
+
 	return form
 }
 
@@ -74,4 +83,10 @@ func (f MapBackedDataForm) Set(name string, value any) {
 
 func (f MapBackedDataForm) Remove(name string) {
 	delete(f, name)
+}
+
+func (f MapBackedDataForm) Iterate(fn func(key string, value any)) {
+	for k, v := range f {
+		fn(k, v)
+	}
 }
