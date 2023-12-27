@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 )
@@ -186,14 +187,22 @@ func (e *Editor) OnPostUpdate(f PostActionCallback) *Editor {
 	return e
 }
 
-// SoftDelete Indicates whether records in this table should be soft deleted,
-// and specifies the columns to be set when the Delete function is called.
+func (e *Editor) OnPreDelete(f PreActionCallback) *Editor {
+	e.preDelete = f
+	return e
+}
+
+func (e *Editor) OnPostDelete(f PostActionCallback) *Editor {
+	e.postDelete = f
+	return e
+}
+
+// SoftDelete Indicates whether records in this table should be soft deleted.
 //
 // If true, a call to 'Delete' is converted to an 'Update', with only
-// the given columns being updated.
-func (e *Editor) SoftDelete(v bool, columns ...string) *Editor {
+// the columns marked for soft deletion being updated.
+func (e *Editor) SoftDelete(v bool) *Editor {
 	e.softDelete = v
-	e.softDeleteColumns = columns
 	return e
 }
 
@@ -261,6 +270,16 @@ func (e *Editor) buildUpdateFields() *Editor {
 	return e
 }
 
+func (e *Editor) buildSoftDeletionFields() *Editor {
+	e.softDeleteColumns = make([]string, 0)
+	for _, f := range e.fields {
+		if f.SoftDelete {
+			e.softDeleteColumns = append(e.softDeleteColumns, fmt.Sprintf("%c%s%c", e.quoteRune, f.Name, e.quoteRune))
+		}
+	}
+	return e
+}
+
 func (e *Editor) Build() Crudiator {
 	var hasFilters bool
 	var builder strings.Builder
@@ -286,7 +305,8 @@ func (e *Editor) Build() Crudiator {
 	e.buildCreateFields().
 		buildReadFields().
 		buildUpdateFields().
-		buildFilterFields()
+		buildFilterFields().
+		buildSoftDeletionFields()
 
 	for _, f := range e.fields {
 		if f.PrimaryKey {
@@ -513,6 +533,25 @@ func (e Editor) getFieldValues(fields []string, form DataForm) []any {
 	return data
 }
 
+func (e Editor) getSoftDeletionValues(form DataForm) []any {
+	var data []any = make([]any, 0)
+	for _, f := range e.fields {
+		if f.SoftDelete {
+			var value any
+			switch f.SoftDeleteType {
+			case IntField:
+				value = 1
+			case BoolField:
+				value = true
+			case TimestampField:
+				value = time.Now()
+			}
+			data = append(data, value)
+		}
+	}
+	return data
+}
+
 func (e Editor) getFieldvalue(field string, form DataForm) any {
 	return form.Get(e.unquote(field))
 }
@@ -689,7 +728,7 @@ func (e Editor) Delete(form DataForm, db *sql.DB) (DbRow, error) {
 	e.invokePreActionCallback(e.preDelete, form)
 
 	if e.softDelete {
-		fieldValues = e.getFieldValues(e.softDeleteColumns, form)
+		fieldValues = e.getSoftDeletionValues(form)
 	}
 
 	fieldValues = append(fieldValues, e.getFieldvalue(e.primaryKeyField, form))
@@ -756,7 +795,24 @@ type Field struct {
 	//	editor.Read() // SELECT "name", school_id FROM students WHERE school_id = $1
 	SelectionFilter bool
 	NullCheck       FieldNullCheck
+	SoftDelete      bool      // Indicates whether this field should be used when soft-deleting records
+	SoftDeleteType  FieldType // Indicates the type of the soft deletion field.
 }
+
+// Indicates the type of column the field represents, mainly used when soft-deleting.
+//
+// The value for this field will automatically be set to true or its equivalent.
+//
+//	(int) = 1
+//	(bool) = true
+//	(timestamp/datetime) = time.Now()
+type FieldType int
+
+const (
+	IntField FieldType = iota
+	BoolField
+	TimestampField
+)
 
 // Indicates whether a field should be checked againt the 'NULL' constant value.
 //
@@ -797,6 +853,13 @@ var (
 	IsSelectionFilter FieldOption = func(f *Field) { f.SelectionFilter = true }
 	IsNullConstant    FieldOption = func(f *Field) { f.NullCheck = FieldMustBeNull }
 	IsNotNullConstant FieldOption = func(f *Field) { f.NullCheck = FieldMustNotBeNull }
+
+	SoftDeleteAs = func(t FieldType) FieldOption {
+		return func(f *Field) {
+			f.SoftDelete = true
+			f.SoftDeleteType = t
+		}
+	}
 )
 
 func NewField(name string, options ...FieldOption) Field {

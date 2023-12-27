@@ -58,10 +58,10 @@ var (
 		crudiator.NewField("name", crudiator.IncludeAlways),
 		crudiator.NewField("age", crudiator.IncludeAlways),
 		crudiator.NewField("created_at", crudiator.IncludeOnCreate, crudiator.IncludeOnRead),
-		crudiator.NewField("deleted_at", crudiator.IncludeOnRead, crudiator.IsSelectionFilter, crudiator.IsNullConstant),
+		crudiator.NewField("deleted_at", crudiator.IncludeOnRead, crudiator.IsSelectionFilter, crudiator.IsNullConstant, crudiator.SoftDeleteAs(crudiator.TimestampField)),
 		crudiator.NewField("updated_at", crudiator.IncludeOnUpdate, crudiator.IncludeOnRead),
 		crudiator.NewField("school_id", crudiator.IncludeOnCreate, crudiator.IncludeOnRead, crudiator.IsSelectionFilter),
-	).SoftDelete(true, "deleted_at").
+	).SoftDelete(true).
 		SetLogger(crudiator.NewStdOutLogger(crudiator.Debug)).
 		MustPaginate(crudiator.KEYSET, "id").
 		Build()
@@ -220,9 +220,33 @@ func TestPostgresqlDelete(t *testing.T) {
 	checkError(err, t)
 	require.Equal(t, "UCLA", row["school_name"])
 
-	// soft delete
+	// hard delete
 	form.Set("id", row["id"])
 	deletedRow, err := schoolCrudiator.Delete(form, db)
 	checkError(err, t)
 	require.NotNil(t, deletedRow, "hard deletion")
+}
+
+func TestPostgresqlSoftDelete(t *testing.T) {
+	db, err := getPgConnection()
+	checkError(err, t)
+	defer db.Close()
+
+	checkError(seedDb("testdata/pg_seed.sql", db), t)
+
+	jsonData := struct {
+		Id        int        `json:"id"`
+		SchoolID  int        `json:"school_id"`
+		DeletedAt *time.Time `json:"deleted_at"`
+	}{
+		Id:        2,
+		SchoolID:  1,
+		DeletedAt: nil,
+	}
+
+	form := crudiator.FromJsonStruct(&jsonData)
+
+	row, err := studentCrudiator.Delete(form, db)
+	checkError(err, t)
+	require.True(t, row.HasData())
 }
