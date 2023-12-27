@@ -21,7 +21,7 @@ func (row DbRow) Remove(col string) {
 	delete(row, col)
 }
 
-func (row DbRow) Has(col string) any {
+func (row DbRow) Has(col string) bool {
 	_, ok := row[col]
 	return ok
 }
