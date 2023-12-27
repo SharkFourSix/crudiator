@@ -57,10 +57,17 @@ func (row DbRow) Scan(rows *sql.Rows) error {
 	return nil
 }
 
-func ParameterizeFields(fields []string, dialect SQLDialect, startCountFrom ...int) string {
+func ParameterizeFields(fields []string, dialect SQLDialect, useAnd bool, startCountFrom ...int) string {
 	var separator bool
 	var builder strings.Builder
 	var start = 1
+	var sep string
+
+	if useAnd {
+		sep = " AND "
+	} else {
+		sep = ","
+	}
 
 	if len(startCountFrom) > 0 {
 		start = startCountFrom[0]
@@ -68,23 +75,26 @@ func ParameterizeFields(fields []string, dialect SQLDialect, startCountFrom ...i
 
 	for _, f := range fields {
 		if separator {
-			builder.WriteRune(',')
+			builder.WriteString(sep)
 		}
 		builder.WriteString(f)
-		builder.WriteRune('=')
-		switch dialect {
-		case POSTGRESQL:
-			builder.WriteRune('$')
-			builder.WriteString(strconv.Itoa(start))
-		case MYSQL:
-			fallthrough
-		case SQLITE:
-			builder.WriteRune('?')
+		if !(strings.HasSuffix(f, "IS NULL") || strings.HasSuffix(f, "IS NOT NULL")) {
+			builder.WriteRune('=')
+			switch dialect {
+			case POSTGRESQL:
+				builder.WriteRune('$')
+				builder.WriteString(strconv.Itoa(start))
+			case MYSQL:
+				fallthrough
+			case SQLITE:
+				builder.WriteRune('?')
+			}
+			start++
 		}
 		if !separator {
 			separator = true
 		}
-		start++
+		// start++
 	}
 	return builder.String()
 }

@@ -11,9 +11,8 @@ import (
 	"github.com/SharkFourSix/crudiator"
 
 	"github.com/BurntSushi/toml"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
-	//_ "github.com/go-pg/pg/v10"
 	_ "github.com/lib/pq"
 )
 
@@ -59,6 +58,7 @@ var (
 		crudiator.NewField("name", crudiator.IncludeAlways),
 		crudiator.NewField("age", crudiator.IncludeAlways),
 		crudiator.NewField("created_at", crudiator.IncludeOnCreate, crudiator.IncludeOnRead),
+		crudiator.NewField("deleted_at", crudiator.IncludeOnRead, crudiator.IsSelectionFilter, crudiator.IsNullConstant),
 		crudiator.NewField("updated_at", crudiator.IncludeOnUpdate, crudiator.IncludeOnRead),
 		crudiator.NewField("school_id", crudiator.IncludeOnCreate, crudiator.IncludeOnRead, crudiator.IsSelectionFilter),
 	).SoftDelete(true, "deleted_at").
@@ -125,11 +125,10 @@ func TestPostgresqlCreate(t *testing.T) {
 
 	row, err := studentCrudiator.Create(form, db)
 	checkError(err, t)
-	assert.Equal(t, "John Doe", row["name"])
-	assert.Equal(t, 25, row["age"])
-	assert.Equal(t, 1, row["id"])
-	assert.Equal(t, 1, row.Get("school_id").(int))
-
+	require.Equal(t, "John Doe", row["name"])
+	require.Equal(t, int64(25), row["age"])
+	require.Equal(t, int64(1001), row["id"])
+	require.Equal(t, int64(1), row.Get("school_id"))
 }
 
 func TestPostgresqlRead(t *testing.T) {
@@ -157,10 +156,10 @@ func TestPostgresqlRead(t *testing.T) {
 
 	form := crudiator.FromJsonStruct(&jsonData)
 
-	key := crudiator.NewKeysetPaging(1, 10)
+	key := crudiator.NewKeysetPaging(0, 10)
 	rows, err := studentCrudiator.Read(form, db, key)
 	checkError(err, t)
-	assert.Equal(t, 10, len(rows))
+	require.Equal(t, 10, len(rows))
 }
 
 func TestPostgresqlUpdate(t *testing.T) {
@@ -195,7 +194,8 @@ func TestPostgresqlUpdate(t *testing.T) {
 	form := crudiator.FromJsonStruct(&jsonData)
 	row, err := studentCrudiator.Update(form, db)
 	checkError(err, t)
-	assert.Equal(t, row["updated_at"].(time.Time).Format(layout), updatedAt.Format(layout))
+	require.True(t, row.HasData())
+	require.Equal(t, row["updated_at"].(time.Time).Format(layout), updatedAt.Format(layout))
 }
 
 func TestPostgresqlDelete(t *testing.T) {
@@ -218,11 +218,11 @@ func TestPostgresqlDelete(t *testing.T) {
 
 	row, err := schoolCrudiator.Create(form, db)
 	checkError(err, t)
-	assert.Equal(t, "UCLA", row["school_name"])
+	require.Equal(t, "UCLA", row["school_name"])
 
 	// soft delete
 	form.Set("id", row["id"])
 	deletedRow, err := schoolCrudiator.Delete(form, db)
 	checkError(err, t)
-	assert.NotNil(t, deletedRow, "hard deletion")
+	require.NotNil(t, deletedRow, "hard deletion")
 }
