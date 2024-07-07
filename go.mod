@@ -4,7 +4,7 @@ go 1.21.4
 
 require (
 	github.com/BurntSushi/toml v0.3.1
-	github.com/gofiber/fiber/v2 v2.52.1
+	github.com/gofiber/fiber/v2 v2.52.5
 	github.com/lib/pq v1.10.9
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.4
